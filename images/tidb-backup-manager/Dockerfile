@@ -3,7 +3,7 @@ ARG TARGETARCH
 ARG RCLONE_VERSION=v1.57.0
 ARG SHUSH_VERSION=v1.4.0
 ARG TOOLKIT_VERSION=v6.5.0
-RUN dnf install -y ca-certificates bind-utils wget nc curl jq unzip && dnf clean all
+RUN dnf install -y ca-certificates bind-utils wget nc jq unzip && dnf clean all
 
 RUN wget -nv https://github.com/ncw/rclone/releases/download/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-${TARGETARCH}.zip \
   && unzip rclone-${RCLONE_VERSION}-linux-${TARGETARCH}.zip \
@@ -28,9 +28,10 @@ RUN \
   && rm -rf ${TOOLKIT_PKG_NAME}
 
 RUN curl -LO https://dl.k8s.io/release/v1.22.4/bin/linux/amd64/kubectl  \
-    && chmod +x kubectl && mv kubectl /usr/local/bin/kubectl
+  && chmod +x kubectl && mv kubectl /usr/local/bin/kubectl
 COPY create-snapshot.sh /usr/local/bin/create-snapshot.sh
 COPY install-snapshot.sh /usr/local/bin/install-snapshot.sh
+RUN chmod +x /usr/local/bin/create-snapshot.sh /usr/local/bin/install-snapshot.sh
 
 COPY bin/${TARGETARCH}/tidb-backup-manager /tidb-backup-manager
 COPY entrypoint.sh /entrypoint.sh
