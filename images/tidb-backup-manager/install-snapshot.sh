@@ -1,6 +1,8 @@
 #!/bin/bash
 
-if ! kubectl -n openebs get lvmsnapshot >/dev/null; then
+CURRENT_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+
+if ! kubectl -n $CURRENT_NS get lvmsnapshot >/dev/null; then
   echo "lvmsnapshot is unsupported in this cluster, skipping"
   exit 0
 fi
@@ -16,8 +18,8 @@ for info in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[] | "\(.volume
   volume_id=$(echo "$info" | awk -F@ '{print $1}')
   snapshot_id=$(echo "$info" | awk -F@ '{print $2}')
   echo "installing snapshot $snapshot_id for volume $volume_id"
-  node_name=$(kubectl -n openebs get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.ownerNodeID')
-  vg_name=$(kubectl -n openebs get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.volGroup')
+  node_name=$(kubectl -n $CURRENT_NS get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.ownerNodeID')
+  vg_name=$(kubectl -n $CURRENT_NS get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.volGroup')
   lv_name=${snapshot_id//snapshot-/}
   echo "node_name: $node_name, vg_name: $vg_name, lv_name: $lv_name"
   pod_name=install-${snapshot_id}
@@ -66,7 +68,7 @@ for info in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[] | "\(.volume
   echo "waiting for snapshot is installed for volume $volume_id"
   pod_name=install-${snapshot_id}
   while true; do
-    status="$(kubectl -n ebs get pod "$pod_name" -o json | jq -r '.status.phase')"
+    status="$(kubectl -n $CURRENT_NS get pod "$pod_name" -o json | jq -r '.status.phase')"
     if [ "$status" == "Succeeded" ]; then
       break
     fi
@@ -78,7 +80,7 @@ for info in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[] | "\(.volume
     sleep 1
   done
   echo "snapshot is installed for volume $volume_id"
-  kubectl -n ebs delete pod "$pod_name"
-  kubectl -n openebs delete lvmsnapshot "$snapshot_id"
+  kubectl -n $CURRENT_NS delete pod "$pod_name"
+  kubectl -n $CURRENT_NS delete lvmsnapshot "$snapshot_id"
   echo "$volume_id $volume_id" >>volume-ids.txt
 done

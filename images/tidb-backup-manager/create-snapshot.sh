@@ -1,6 +1,9 @@
 #!/bin/bash
 
-if ! kubectl -n openebs get lvmsnapshot >/dev/null; then
+# FIXME: check error
+CURRENT_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+
+if ! kubectl -n $CURRENT_NS get lvmsnapshot >/dev/null; then
   echo "lvmsnapshot is unsupported in this cluster, skipping"
   exit 0
 fi
@@ -14,14 +17,14 @@ fi
 
 for volume_id in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[].volume_id'); do
   echo "creating snapshot for volume $volume_id"
-  pvc=$(kubectl -n openebs get pv "$volume_id" -o json | jq -r '.spec.claimRef.name')
+  pvc=$(kubectl -n $CURRENT_NS get pv "$volume_id" -o json | jq -r '.spec.claimRef.name')
 
   cat >snap.yaml <<EOF
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata:
   name: ${pvc}-snap
-  namespace: ebs
+  namespace: ${CURRENT_NS}
 spec:
   volumeSnapshotClassName: lvmpv-snapclass
   source:
@@ -35,10 +38,10 @@ echo -n >snapshot-ids.txt
 
 for volume_id in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[].volume_id'); do
   echo "wait for snapshot to be ready for volume $volume_id"
-  pvc=$(kubectl -n openebs get pv "$volume_id" -o json | jq -r '.spec.claimRef.name')
+  pvc=$(kubectl -n $CURRENT_NS get pv "$volume_id" -o json | jq -r '.spec.claimRef.name')
   snap=${pvc}-snap
   while true; do
-    snap_content=$(kubectl -n ebs get volumesnapshot "$snap" -o json | jq -r .status.boundVolumeSnapshotContentName)
+    snap_content=$(kubectl -n $CURRENT_NS get volumesnapshot "$snap" -o json | jq -r .status.boundVolumeSnapshotContentName)
     if [ -z "$snap_content" ]; then
       echo "snapshot not ready for volume $volume_id"
       sleep 5
@@ -54,6 +57,6 @@ for volume_id in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[].volume_
   done
   echo "${volume_id} ${snap_handle}" >>snapshot-ids.txt
   kubectl patch volumesnapshotcontent "$snap_content" --patch '{"spec":{"deletionPolicy":"Retain"}}' --type=merge
-  kubectl -n ebs delete volumesnapshot "$snap"
+  kubectl -n $CURRENT_NS delete volumesnapshot "$snap"
   kubectl delete volumesnapshotcontent "$snap_content"
 done
