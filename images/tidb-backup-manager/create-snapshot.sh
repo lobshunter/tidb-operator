@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# FIXME: check error
 CURRENT_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
 
 if ! kubectl -n $CURRENT_NS get lvmsnapshot >/dev/null; then
@@ -26,7 +25,7 @@ metadata:
   name: ${pvc}-snap
   namespace: ${CURRENT_NS}
 spec:
-  volumeSnapshotClassName: lvmpv-snapclass
+  volumeSnapshotClassName: lvmpv-snapclass # FIXME: hardcoded snapshot-class name
   source:
     persistentVolumeClaimName: ${pvc}
 EOF
@@ -47,6 +46,14 @@ for volume_id in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[].volume_
       sleep 5
       continue
     fi
+
+    snapshot_ready=$(kubectl get volumesnapshot "$snap" -o json | jq -r .status.readyToUse)
+    if [ "$snapshot_ready" != "true" ]; then
+      echo "snapshot not ready for volume $volume_id"
+      sleep 5
+      continue
+    fi
+
     snap_handle=$(kubectl get volumesnapshotcontent "$snap_content" -o json | jq -r '.status.snapshotHandle' | awk -F@ '{print $2}')
     if [ -z "$snap_handle" ]; then
       echo "snap_handle not ready for volume $volume_id"

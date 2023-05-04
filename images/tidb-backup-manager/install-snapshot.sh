@@ -1,6 +1,7 @@
 #!/bin/bash
 
 CURRENT_NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+OPENEBS_NS=openebs
 
 if ! kubectl -n $CURRENT_NS get lvmsnapshot >/dev/null; then
   echo "lvmsnapshot is unsupported in this cluster, skipping"
@@ -18,8 +19,8 @@ for info in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[] | "\(.volume
   volume_id=$(echo "$info" | awk -F@ '{print $1}')
   snapshot_id=$(echo "$info" | awk -F@ '{print $2}')
   echo "installing snapshot $snapshot_id for volume $volume_id"
-  node_name=$(kubectl -n $CURRENT_NS get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.ownerNodeID')
-  vg_name=$(kubectl -n $CURRENT_NS get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.volGroup')
+  node_name=$(kubectl -n $OPENEBS_NS get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.ownerNodeID')
+  vg_name=$(kubectl -n $OPENEBS_NS get lvmsnapshot "$snapshot_id" -o json | jq -r '.spec.volGroup')
   lv_name=${snapshot_id//snapshot-/}
   echo "node_name: $node_name, vg_name: $vg_name, lv_name: $lv_name"
   pod_name=install-${snapshot_id}
@@ -28,7 +29,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: ${pod_name}
-  namespace: ebs
+  namespace: ${CURRENT_NS}
 spec:
   containers:
   - command:
@@ -81,6 +82,6 @@ for info in $(cat backupmeta.json | jq -r '.tikv.stores[].volumes[] | "\(.volume
   done
   echo "snapshot is installed for volume $volume_id"
   kubectl -n $CURRENT_NS delete pod "$pod_name"
-  kubectl -n $CURRENT_NS delete lvmsnapshot "$snapshot_id"
+  kubectl -n $OPENEBS_NS delete lvmsnapshot "$snapshot_id"
   echo "$volume_id $volume_id" >>volume-ids.txt
 done
